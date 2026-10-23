@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Search, Plus, Check, Loader2, Film, ChevronDown } from "lucide-react";
 import type { OMDbSearchResult, OMDbSearchResponse } from "@/lib/types";
 
 export default function AddPage() {
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const searchVersion = useRef(0);
   const [results, setResults] = useState<OMDbSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -21,6 +23,10 @@ export default function AddPage() {
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    const version = ++searchVersion.current;
+    setSubmittedQuery(trimmed);
+    setLoadingMore(false);
+
     setLoading(true);
     setError("");
     setResults([]);
@@ -32,6 +38,7 @@ export default function AddPage() {
         `https://www.omdbapi.com/?apikey=${process.env.NEXT_PUBLIC_OMDB_API_KEY}&s=${encodeURIComponent(trimmed)}&page=1`
       );
       const data: OMDbSearchResponse = await res.json();
+      if (version !== searchVersion.current) return;
 
       if (data.Response === "False") {
         setError(data.Error ?? "No results found");
@@ -41,22 +48,25 @@ export default function AddPage() {
       setResults(data.Search ?? []);
       setTotalResults(parseInt(data.totalResults || "0", 10));
     } catch {
+      if (version !== searchVersion.current) return;
       setError("Search failed. Check your connection and try again.");
     } finally {
-      setLoading(false);
+      if (version === searchVersion.current) setLoading(false);
     }
   }
 
   async function handleLoadMore() {
-    if (loadingMore) return;
+    if (loadingMore || loading) return;
+    const version = searchVersion.current;
     const nextPage = page + 1;
     setLoadingMore(true);
 
     try {
       const res = await fetch(
-        `https://www.omdbapi.com/?apikey=${process.env.NEXT_PUBLIC_OMDB_API_KEY}&s=${encodeURIComponent(query.trim())}&page=${nextPage}`
+        `https://www.omdbapi.com/?apikey=${process.env.NEXT_PUBLIC_OMDB_API_KEY}&s=${encodeURIComponent(submittedQuery)}&page=${nextPage}`
       );
       const data: OMDbSearchResponse = await res.json();
+      if (version !== searchVersion.current) return;
 
       if (data.Response === "True" && data.Search) {
         setResults((prev) => [...prev, ...data.Search!]);
@@ -65,7 +75,7 @@ export default function AddPage() {
     } catch {
       // fail silently
     } finally {
-      setLoadingMore(false);
+      if (version === searchVersion.current) setLoadingMore(false);
     }
   }
 
